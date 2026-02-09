@@ -3,315 +3,429 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pixel Bingo v0.2</title>
+    <title>Pixel Bingo v0.3</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
-            --bg: #0a0a0a; --primary: #00ff41; --secondary: #ff00ff;
-            --accent: #ffff00; --text: #fff; --border: #333; --highlight: #00ffff;
+            --bg: #121212; --primary: #00ff41; --secondary: #ff00ff;
+            --accent: #ffff00; --error: #ff3333; --text: #eee; 
+            --panel: #1e1e1e; --border: #444;
         }
+        * { box-sizing: border-box; }
         body {
             background: var(--bg); color: var(--text);
             font-family: 'Press Start 2P', cursive;
             margin: 0; overflow: hidden; font-size: 10px;
-            user-select: none;
+            user-select: none; -webkit-tap-highlight-color: transparent;
         }
         .screen {
             position: fixed; inset: 0; background: var(--bg);
             display: flex; flex-direction: column; align-items: center;
-            justify-content: center; z-index: 100; padding: 20px; text-align: center;
+            justify-content: center; z-index: 100; padding: 15px; text-align: center;
         }
         .hidden { display: none !important; }
+        
+        /* --- UI Components --- */
         .btn {
-            background: #222; border: 4px solid #fff; color: #fff;
-            padding: 12px 20px; margin: 8px; cursor: pointer; font-family: 'Press Start 2P';
-            image-rendering: pixelated; touch-action: manipulation;
+            background: #000; border: 2px solid #fff; color: #fff;
+            padding: 15px 20px; margin: 8px; cursor: pointer; 
+            font-family: inherit; font-size: 10px; text-transform: uppercase;
+            box-shadow: 4px 4px 0px #333; transition: transform 0.1s;
         }
-        .btn:hover:not(:disabled) { background: var(--secondary); color: #fff; }
-        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0px #333; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: #666; color: #888; }
+        .btn.primary { border-color: var(--primary); color: var(--primary); }
 
         input {
-            background: #000; border: 4px solid #fff; color: var(--primary);
-            padding: 10px; font-family: 'Press Start 2P'; text-align: center; margin: 5px; width: 150px;
+            background: #000; border: 2px solid #666; color: #fff;
+            padding: 10px; font-family: inherit; text-align: center; margin: 5px;
+            outline: none; font-size: 12px;
         }
+        input:focus { border-color: var(--secondary); }
+
+        /* --- Layout Boxes --- */
+        .box {
+            background: var(--panel); border: 2px solid var(--border);
+            padding: 15px; margin: 10px 0; width: 100%; max-width: 400px;
+        }
+        .label { font-size: 8px; color: #888; display: block; margin-bottom: 5px; }
 
         /* --- Bingo Grid --- */
         .bingo-container {
             display: grid; grid-template-columns: repeat(5, 1fr);
-            gap: 10px; margin: 20px auto; max-width: 450px; width: 90vw;
+            gap: 6px; margin: 15px auto; max-width: 400px; width: 100%;
         }
         .cell {
-            aspect-ratio: 1/1; background: #151515; border: 3px solid var(--border);
+            aspect-ratio: 1/1; background: #000; border: 2px solid #333;
             display: flex; align-items: center; justify-content: center;
-            font-size: 16px; position: relative; transition: all 0.2s;
+            font-size: 14px; position: relative; transition: all 0.1s; cursor: pointer;
+            color: #666;
         }
+        
+        /* Setup Phase States */
+        .cell input { 
+            width: 100%; height: 100%; border: none; padding: 0; margin: 0; 
+            background: transparent; font-size: 14px; color: var(--primary);
+        }
+        .cell.error { background: rgba(255, 0, 0, 0.2); border-color: var(--error); }
+        .cell.error input { color: var(--error); }
+
+        /* Game Phase States */
+        .cell.game-cell { color: #fff; font-size: 16px; }
+        .cell.selected { border-color: var(--accent); background: #222; transform: scale(0.95); }
         .cell.marked { 
-            background: var(--primary); color: #000; border-color: #fff;
-            animation: markPop 0.3s ease-out;
+            background: var(--primary); color: #000; border-color: var(--primary);
+            animation: pop 0.2s ease-out;
         }
         .cell.bingo-line {
-            background: var(--secondary); color: #fff;
-            animation: neonPulse 1s infinite alternate;
-        }
-        .cell input {
-            width: 80%; border: none; background: transparent; color: inherit;
-            font-size: inherit; font-family: inherit; outline: none; padding: 0; text-align: center;
+            background: var(--secondary); color: #fff; border-color: #fff;
+            box-shadow: 0 0 15px var(--secondary);
         }
 
-        @keyframes markPop {
-            0% { transform: scale(0.5); }
-            70% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+        @keyframes pop { 50% { transform: scale(1.1); } }
+
+        /* --- HUD --- */
+        #hud-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            width: 100%; max-width: 400px; margin-bottom: 10px;
+            background: #222; border-bottom: 2px solid #444; padding: 10px;
         }
-        @keyframes neonPulse {
-            from { box-shadow: 0 0 5px var(--secondary); }
-            to { box-shadow: 0 0 20px var(--secondary), 0 0 30px var(--highlight); }
-        }
+        .turn-badge { font-size: 10px; color: #888; }
+        .turn-badge.active { color: var(--accent); text-shadow: 0 0 5px var(--accent); }
+        .lines-badge { color: var(--secondary); }
 
         #call-history {
-            width: 100%; max-width: 500px; height: 50px; 
-            overflow-x: auto; display: flex; gap: 10px; align-items: center;
-            background: #111; padding: 10px; margin-top: 10px; border: 2px solid #222;
+            width: 100%; max-width: 400px; height: 45px;
+            overflow-x: auto; display: flex; gap: 8px; align-items: center;
+            background: #000; padding: 5px; margin-top: 15px; border: 2px solid #333;
         }
-        .history-ball {
-            min-width: 35px; height: 35px; background: #333; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center; font-size: 10px; border: 2px solid #555;
+        .ball {
+            min-width: 30px; height: 30px; background: #222; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 10px; color: #888; border: 2px solid #444;
         }
-        .history-ball.latest { background: var(--accent); color: #000; border-color: #fff; transform: scale(1.1); }
+        .ball.latest { 
+            background: var(--accent); color: #000; border-color: #fff; 
+            transform: scale(1.1); font-weight: bold;
+        }
 
-        .status-tag { font-size: 8px; color: var(--primary); margin-left: 5px; }
-
-        @media (max-width: 600px) {
-            .cell { font-size: 12px; }
-            .bingo-container { gap: 5px; }
-        }
+        .helper-text { font-size: 8px; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <div id="start-screen" class="screen">
-        <h1 style="color:var(--primary); font-size: 24px; margin-bottom: 20px;">PIXEL BINGO <span style="font-size:10px">v0.2</span></h1>
-        <input type="text" id="user-name" placeholder="YOUR NAME" maxlength="8">
+        <h1 style="color:var(--primary); font-size:28px; line-height: 1.5; margin-bottom:20px;">
+            PIXEL<br><span style="color:#fff">BINGO</span>
+            <span style="font-size:10px; color:#666; display:block; margin-top:5px;">v0.3</span>
+        </h1>
         
-        <div style="background: #111; padding: 15px; border: 2px solid #444; margin: 10px;">
-            <p style="font-size: 8px;">HOST SETTINGS</p>
-            <label style="font-size: 8px;">RANGE: 1-</label><input type="number" id="cfg-range" value="25" style="width:50px; font-size:8px;">
-            <label style="font-size: 8px;">LINES:</label><input type="number" id="cfg-lines" value="3" style="width:40px; font-size:8px;">
+        <input type="text" id="user-name" placeholder="ENTER NAME" maxlength="8" style="width: 200px;">
+        
+        <div class="box">
+            <span class="label">HOST SETTINGS</span>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <div><span class="label">MAX NUM</span><input type="number" id="cfg-range" value="25" style="width:60px;"></div>
+                <div><span class="label">LINES</span><input type="number" id="cfg-lines" value="3" style="width:40px;"></div>
+            </div>
         </div>
 
         <div>
-            <button class="btn" onclick="initMode('local')">SINGLE PLAYER</button>
-            <button class="btn" onclick="initMode('online')">ONLINE P2P</button>
+            <button class="btn" onclick="initGame('local')">SOLO</button>
+            <button class="btn primary" onclick="initGame('online')">ONLINE PVP</button>
         </div>
     </div>
 
     <div id="lobby-screen" class="screen hidden">
         <h2 style="color:var(--secondary)">LOBBY</h2>
-        <div id="room-id-area" style="margin: 10px; cursor: pointer;" onclick="copyId()">
-            <p style="font-size: 8px; color: #aaa;">ROOM ID (CLICK TO COPY):</p>
-            <p id="room-id-display" style="color: var(--accent); border: 1px dashed #555; padding: 5px;"></p>
+        
+        <div class="box" onclick="copyId()" style="cursor:pointer; border-style:dashed;">
+            <span class="label">ROOM ID (TAP TO COPY)</span>
+            <div id="room-id-display" style="color:var(--accent); font-size:12px; margin-top:5px;">CONNECTING...</div>
         </div>
-        <div id="online-controls" class="hidden">
-            <input type="text" id="join-id" placeholder="PASTE ID HERE">
-            <button class="btn" onclick="joinRoom()" style="padding: 5px; font-size: 8px;">JOIN</button>
+
+        <div id="join-controls" class="hidden box" style="border-color: var(--primary);">
+            <span class="label">JOIN A FRIEND</span>
+            <input type="text" id="join-id" placeholder="PASTE ROOM ID" style="width:80%">
+            <button class="btn" onclick="joinRoom()">JOIN</button>
         </div>
-        <div id="player-list" style="margin: 20px; font-size: 10px;"></div>
-        <button class="btn" id="start-setup-btn" onclick="hostStartSetup()" disabled>START SETUP (HOST)</button>
+
+        <div class="box" style="text-align:left; min-height: 100px;">
+            <span class="label">PLAYERS</span>
+            <div id="player-list" style="margin-top:10px; line-height:1.8;"></div>
+        </div>
+
+        <button class="btn primary" id="host-setup-btn" onclick="hostStartSetup()" disabled>START SETUP</button>
     </div>
 
     <div id="setup-screen" class="screen hidden">
-        <h2 style="color:var(--highlight)">SET BOARD</h2>
+        <h2 style="color:var(--highlight)">SETUP BOARD</h2>
         <div id="setup-grid" class="bingo-container"></div>
-        <div>
+        
+        <div style="height:20px; color:var(--error); font-size:9px; margin: 5px 0;" id="setup-msg"></div>
+
+        <div style="display:flex; gap:10px;">
             <button class="btn" onclick="randomizeBoard()">RANDOM</button>
-            <button class="btn" id="ready-btn" onclick="toggleReady()">READY</button>
+            <button class="btn primary" id="ready-btn" onclick="toggleReady()" disabled>READY</button>
         </div>
-        <p id="setup-msg" style="color: red; font-size: 8px;"></p>
-        <div id="ready-count" style="font-size: 8px; color: var(--primary);">READY: 0/0</div>
-        <button class="btn hidden" id="host-start-game-btn" onclick="hostStartGame()" style="border-color: var(--accent);">ALL READY! START GAME</button>
+        
+        <div id="ready-status" style="font-size:9px; margin-top:10px; color:#666;">WAITING...</div>
+        <button class="btn hidden" id="host-start-btn" onclick="hostStartGame()" style="margin-top:15px; width: 100%; border-color:var(--accent);">START GAME</button>
     </div>
 
     <div id="game-screen" class="screen hidden">
-        <div style="display: flex; justify-content: space-between; width: 90vw; max-width: 450px; margin-bottom: 10px;">
-            <div id="turn-display" style="font-size: 8px; color: var(--highlight);">WAITING...</div>
-            <div id="line-progress" style="font-size: 8px; color: var(--accent);">LINES: 0 / 3</div>
+        <div id="hud-bar">
+            <div id="turn-badge" class="turn-badge">WAITING...</div>
+            <div id="lines-badge" class="lines-badge">LINES: 0/3</div>
         </div>
 
-        <div id="main-grid" class="bingo-container"></div>
+        <p class="helper-text">
+            <span style="color:var(--accent)">DOUBLE TAP</span> A NUMBER TO CALL IT
+        </p>
+
+        <div id="game-grid" class="bingo-container"></div>
         <div id="call-history"></div>
-
-        <div id="action-area" style="margin-top: 20px;">
-            <button class="btn hidden" id="call-btn" onclick="playerCallNumber()" style="border-color: var(--primary);">IT'S YOUR TURN: CALL!</button>
-            <p id="wait-msg" style="font-size: 8px; color: #555;">WAITING FOR PLAYER...</p>
-        </div>
     </div>
 
-    <div id="victory-screen" class="screen hidden">
-        <div class="bingo-text" style="font-size: 40px; color: gold;">BINGO!</div>
-        <h2 id="winner-name" style="color:var(--primary); margin: 20px;">-</h2>
-        <button class="btn" onclick="location.reload()">PLAY AGAIN</button>
+    <div id="victory-screen" class="screen hidden" style="background:rgba(10,10,10,0.95);">
+        <h1 style="color:gold; font-size:40px; margin-bottom:10px;">BINGO!</h1>
+        <div style="font-size:12px; color:#888;">WINNER</div>
+        <h2 id="winner-text" style="color:var(--primary); margin: 20px 0; font-size: 24px;">-</h2>
+        <button class="btn" onclick="location.reload()">MAIN MENU</button>
     </div>
 
     <script>
+        // --- Global State ---
+        let mode = 'local';
+        let isHost = false;
+        let myName = "";
         let players = []; 
+        let myIdx = -1;
+        let config = { range: 25, lines: 3 };
+        
         let myBoard = Array(25).fill(0);
         let marked = Array(25).fill(false);
-        let config = { range: 25, lines: 3 };
-        let mode = ""; let isHost = false; let myIdx = -1;
-        let peer = null; let conns = [];
-        let calledNumbers = [];
-        let curTurnIdx = 0;
-        let isReady = false;
+        let calledNums = [];
+        let curTurn = 0;
+        let selectedCell = -1; // 用於雙擊判斷
 
-        // (1) 複製 ID 功能
-        function copyId() {
-            const idText = document.getElementById('room-id-display').innerText;
-            if(!idText) return;
-            navigator.clipboard.writeText(idText).then(() => alert("ID COPIED!"));
-        }
+        // --- P2P ---
+        let peer = null;
+        let conns = [];
 
-        function initMode(m) {
+        // --- Init ---
+        function initGame(m) {
             mode = m;
-            const name = document.getElementById('user-name').value || "PLAYER";
+            myName = document.getElementById('user-name').value.trim() || "PLAYER";
             config.range = parseInt(document.getElementById('cfg-range').value) || 25;
             config.lines = parseInt(document.getElementById('cfg-lines').value) || 3;
+            
             document.getElementById('start-screen').classList.add('hidden');
             
-            if(mode === 'local') {
-                isHost = true; myIdx = 0;
-                players = [{name: name, id: 'local', ready: false}];
+            if (mode === 'local') {
+                isHost = true;
+                players = [{id:'local', name:myName, ready:false}];
                 hostStartSetup();
             } else {
                 document.getElementById('lobby-screen').classList.remove('hidden');
-                initPeer(name);
+                initPeer();
             }
         }
 
-        function initPeer(name) {
+        function initPeer() {
             peer = new Peer();
             peer.on('open', id => {
                 isHost = true; myIdx = 0;
                 document.getElementById('room-id-display').innerText = id;
-                document.getElementById('online-controls').classList.remove('hidden');
-                players = [{name: name, id: id, ready: false}];
-                updatePlayerList();
+                players = [{id:id, name:myName, ready:false}];
+                updateLobby();
             });
-            peer.on('connection', c => {
-                conns.push(c);
-                c.on('data', data => handleData(data, c));
-                c.on('open', () => c.send({type:'SYNC_CFG', config}));
+            peer.on('connection', conn => {
+                conns.push(conn);
+                conn.on('open', () => conn.send({type:'SYNC_CFG', config}));
+                conn.on('data', data => handleData(data, conn));
             });
+            if(!isHost) document.getElementById('join-controls').classList.remove('hidden'); 
         }
 
         function joinRoom() {
-            const rid = document.getElementById('join-id').value;
-            if(!rid) return;
-            const c = peer.connect(rid);
-            conns = [c]; isHost = false;
-            c.on('open', () => c.send({type:'JOIN', name: document.getElementById('user-name').value || "GUEST"}));
-            c.on('data', data => handleData(data, c));
+            const hostId = document.getElementById('join-id').value.trim();
+            if(!hostId) return;
+            if(peer) peer.destroy();
+            
+            peer = new Peer();
+            peer.on('open', id => {
+                isHost = false;
+                const conn = peer.connect(hostId);
+                conns = [conn];
+                conn.on('open', () => conn.send({type:'JOIN', name:myName}));
+                conn.on('data', data => handleData(data, conn));
+                document.getElementById('room-id-display').innerText = "JOINING...";
+                document.getElementById('join-controls').classList.add('hidden');
+            });
         }
 
         function handleData(data, conn) {
-            if(data.type === 'JOIN' && isHost) {
-                players.push({name: data.name, id: conn.peer, ready: false});
-                updatePlayerList(); broadcast({type:'SYNC_PLAYERS', players});
+            // Host Logic
+            if(isHost) {
+                if(data.type === 'JOIN') {
+                    players.push({id:conn.peer, name:data.name, ready:false});
+                    updateLobby();
+                    broadcast({type:'SYNC_PLAYERS', players});
+                }
+                if(data.type === 'READY_TOGGLE') {
+                    const p = players.find(x => x.id === conn.peer);
+                    if(p) p.ready = data.val;
+                    broadcast({type:'SYNC_PLAYERS', players});
+                    checkReadyStatus();
+                }
+                if(data.type === 'REQUEST_CALL') {
+                    // (3) 同步核心：Host 收到請求 -> 驗證 -> 廣播
+                    processCall(data.num); 
+                }
+                if(data.type === 'WINNER') {
+                    broadcast(data); // Relay winner
+                    showVictory(data.name);
+                }
             }
+            
+            // Client Logic (Everyone receives these)
             if(data.type === 'SYNC_PLAYERS') {
                 players = data.players;
-                myIdx = players.findIndex(p => p.id === (peer ? peer.id : 'local'));
-                updatePlayerList();
-                updateReadyUI();
+                myIdx = players.findIndex(p => p.id === peer.id);
+                updateLobby();
+                checkReadyStatus();
             }
-            if(data.type === 'SYNC_CFG') { config = data.config; }
-            if(data.type === 'START_SETUP') {
-                document.getElementById('lobby-screen').classList.add('hidden');
-                document.getElementById('setup-screen').classList.remove('hidden');
-                renderSetupGrid();
-            }
-            if(data.type === 'READY_UP' && isHost) {
-                const p = players.find(x => x.id === conn.peer);
-                if(p) p.ready = data.state;
-                broadcast({type:'SYNC_PLAYERS', players});
-                updateReadyUI();
-            }
-            if(data.type === 'START_GAME') runStartGame();
-            if(data.type === 'CALL') receiveNumber(data.num, data.nextTurn);
-            if(data.type === 'WINNER') showWinner(data.name);
+            if(data.type === 'SYNC_CFG') config = data.config;
+            if(data.type === 'START_SETUP') startSetupPhase();
+            if(data.type === 'START_GAME') startGamePhase();
+            if(data.type === 'CALL_UPDATE') applyCall(data.num, data.nextTurn);
+            if(data.type === 'WINNER') showVictory(data.name);
         }
 
         function broadcast(msg) { conns.forEach(c => c.send(msg)); }
 
-        function updatePlayerList() {
+        // --- Lobby ---
+        function updateLobby() {
             const list = document.getElementById('player-list');
-            list.innerHTML = players.map(p => `<div>${p.name} ${p.ready?'<span class="status-tag">[READY]</span>':''}</div>`).join('');
-            if(isHost) document.getElementById('start-setup-btn').disabled = (players.length < 1 && mode !== 'local');
+            list.innerHTML = players.map(p => 
+                `<div><span style="color:${p.ready?'var(--primary)':'#666'}">●</span> ${p.name}</div>`
+            ).join('');
+            if(isHost) document.getElementById('host-setup-btn').disabled = false;
         }
 
-        // (2) 房主流程控制
         function hostStartSetup() {
-            if(isHost) {
-                broadcast({type:'START_SETUP'});
-                document.getElementById('lobby-screen').classList.add('hidden');
-                document.getElementById('setup-screen').classList.remove('hidden');
-                renderSetupGrid();
-            }
+            if(isHost) { broadcast({type:'START_SETUP'}); startSetupPhase(); }
+        }
+
+        // --- Setup ---
+        function startSetupPhase() {
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('setup-screen').classList.remove('hidden');
+            renderSetupGrid();
         }
 
         function renderSetupGrid() {
-            const container = document.getElementById('setup-grid');
-            container.innerHTML = '';
+            const grid = document.getElementById('setup-grid');
+            grid.innerHTML = '';
             for(let i=0; i<25; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.innerHTML = `<input type="number" value="${myBoard[i]||''}" onchange="updateBoard(${i}, this.value)">`;
-                container.appendChild(cell);
+                let div = document.createElement('div');
+                div.className = 'cell';
+                let inp = document.createElement('input');
+                inp.type = "number";
+                inp.value = myBoard[i] || '';
+                // 即時驗證
+                inp.oninput = (e) => { myBoard[i] = parseInt(e.target.value); validateBoard(); };
+                div.appendChild(inp);
+                grid.appendChild(div);
             }
         }
 
-        function updateBoard(i, val) { myBoard[i] = parseInt(val); validateBoard(); }
+        // (2) 輸入驗證：重複或非法數字
+        function validateBoard() {
+            const cells = document.getElementById('setup-grid').children;
+            const counts = {};
+            let hasError = false;
+            let errorMsg = "";
+
+            myBoard.forEach(n => { if(n) counts[n] = (counts[n]||0)+1; });
+
+            for(let i=0; i<25; i++) {
+                const val = myBoard[i];
+                const cell = cells[i];
+                cell.classList.remove('error');
+                
+                if(isNaN(val) || val < 1 || val > config.range) {
+                    if(val !== 0 && !isNaN(val)) { cell.classList.add('error'); hasError = true; errorMsg = "OUT OF RANGE"; }
+                } else if(counts[val] > 1) {
+                    cell.classList.add('error'); hasError = true; errorMsg = "DUPLICATE NUMBERS";
+                }
+            }
+
+            const isFull = myBoard.filter(n => n > 0).length === 25;
+            const btn = document.getElementById('ready-btn');
+            const msgEl = document.getElementById('setup-msg');
+
+            if(hasError) {
+                btn.disabled = true;
+                msgEl.innerText = errorMsg;
+            } else if(!isFull) {
+                btn.disabled = true;
+                msgEl.innerText = "FILL ALL CELLS";
+            } else {
+                btn.disabled = false;
+                msgEl.innerText = "";
+            }
+        }
 
         function randomizeBoard() {
-            let nums = [];
-            while(nums.length < 25) {
-                let r = Math.floor(Math.random() * config.range) + 1;
-                if(!nums.includes(r)) nums.push(r);
+            let pool = Array.from({length: config.range}, (_, i) => i + 1);
+            for(let i=pool.length-1; i>0; i--){
+                const j = Math.floor(Math.random()*(i+1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
             }
-            myBoard = nums; renderSetupGrid(); validateBoard();
+            myBoard = pool.slice(0, 25);
+            renderSetupGrid();
+            validateBoard();
         }
 
-        function validateBoard() {
-            const btn = document.getElementById('ready-btn');
-            const hasDuplicate = new Set(myBoard.filter(n=>n!==0)).size !== 25;
-            const hasInvalid = myBoard.some(n => n <= 0 || n > config.range || isNaN(n));
-            btn.disabled = hasDuplicate || hasInvalid;
-            document.getElementById('setup-msg').innerText = hasDuplicate ? "DUPLICATE!" : (hasInvalid ? "OUT OF RANGE!" : "");
-        }
-
-        // (3) 準備狀態連動
         function toggleReady() {
-            isReady = !isReady;
-            document.getElementById('ready-btn').innerText = isReady ? "CANCEL" : "READY";
-            document.getElementById('ready-btn').style.borderColor = isReady ? "var(--primary)" : "#fff";
-            if(isHost) { players[0].ready = isReady; updateReadyUI(); broadcast({type:'SYNC_PLAYERS', players}); }
-            else { conns[0].send({type:'READY_UP', state: isReady}); }
+            const me = players[myIdx];
+            const newVal = !me.ready;
+            
+            if(isHost) {
+                me.ready = newVal;
+                checkReadyStatus();
+                broadcast({type:'SYNC_PLAYERS', players});
+            } else {
+                conns[0].send({type:'READY_TOGGLE', val: newVal});
+                document.getElementById('ready-btn').innerText = newVal ? "WAIT..." : "READY";
+            }
         }
 
-        function updateReadyUI() {
+        function checkReadyStatus() {
             const readyCount = players.filter(p => p.ready).length;
-            document.getElementById('ready-count').innerText = `READY: ${readyCount} / ${players.length}`;
+            document.getElementById('ready-status').innerText = `READY: ${readyCount}/${players.length}`;
+            
+            const me = players[myIdx];
+            if(me) document.getElementById('ready-btn').innerText = me.ready ? "WAITING..." : "READY";
+            document.getElementById('ready-btn').classList.toggle('primary', !me.ready);
+
             if(isHost) {
-                const allReady = readyCount === players.length;
-                document.getElementById('host-start-game-btn').classList.toggle('hidden', !allReady);
+                const allReady = readyCount === players.length && players.length > 0;
+                const startBtn = document.getElementById('host-start-btn');
+                startBtn.classList.toggle('hidden', !allReady);
             }
         }
 
         function hostStartGame() {
-            if(isHost) { broadcast({type:'START_GAME'}); runStartGame(); }
+            broadcast({type:'START_GAME'});
+            startGamePhase();
         }
 
-        function runStartGame() {
+        // --- Game Phase ---
+        function startGamePhase() {
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
             renderGameGrid();
@@ -319,89 +433,130 @@
         }
 
         function renderGameGrid() {
-            const container = document.getElementById('main-grid'); container.innerHTML = '';
-            myBoard.forEach((num, i) => {
-                const cell = document.createElement('div');
-                cell.className = 'cell'; cell.id = `cell-${i}`; cell.innerText = num;
-                container.appendChild(cell);
+            const grid = document.getElementById('game-grid');
+            grid.innerHTML = '';
+            myBoard.forEach((num, idx) => {
+                let div = document.createElement('div');
+                div.className = 'cell game-cell';
+                div.id = `gcell-${idx}`;
+                div.innerText = num;
+                // (1) 綁定雙擊事件
+                div.onclick = () => handleCellClick(idx, num);
+                grid.appendChild(div);
             });
         }
 
-        // (5) 輪流叫號與自動選中
-        function playerCallNumber() {
-            if(calledNumbers.length >= config.range) return;
-            let n;
-            do { n = Math.floor(Math.random() * config.range) + 1; } while(calledNumbers.includes(n));
-            
-            const nextTurn = (curTurnIdx + 1) % players.length;
-            if(isHost) {
-                receiveNumber(n, nextTurn);
-                broadcast({type:'CALL', num: n, nextTurn: nextTurn});
+        // (1) 雙擊叫號邏輯
+        function handleCellClick(idx, num) {
+            // 規則：必須是你的回合，且該數字未被選過
+            if(curTurn !== myIdx) return;
+            if(marked[idx] || calledNums.includes(num)) return;
+
+            if(selectedCell === idx) {
+                // 第二次點擊：確認叫號
+                if(isHost) processCall(num);
+                else conns[0].send({type:'REQUEST_CALL', num: num});
+                
+                selectedCell = -1; // 重置
+                updateSelection();
             } else {
-                conns[0].send({type:'CALL', num: n, nextTurn: nextTurn});
+                // 第一次點擊：選中
+                selectedCell = idx;
+                updateSelection();
             }
         }
 
-        function receiveNumber(n, nextTurn) {
-            calledNumbers.unshift(n);
-            curTurnIdx = nextTurn;
-            
-            // 自動選中邏輯
-            const idx = myBoard.indexOf(n);
-            if(idx !== -1) { marked[idx] = true; }
+        function updateSelection() {
+            for(let i=0; i<25; i++) {
+                const cell = document.getElementById(`gcell-${i}`);
+                if(i === selectedCell) cell.classList.add('selected');
+                else cell.classList.remove('selected');
+            }
+        }
 
+        // (3) 核心同步：只有 Host 決定下一回合與廣播
+        function processCall(num) {
+            if(calledNums.includes(num)) return; // 防重複
+            
+            const nextTurn = (curTurn + 1) % players.length;
+            
+            // Host 更新自己
+            applyCall(num, nextTurn);
+            // Host 廣播給所有人
+            broadcast({type:'CALL_UPDATE', num: num, nextTurn: nextTurn});
+        }
+
+        function applyCall(num, nextTurn) {
+            calledNums.unshift(num);
+            curTurn = nextTurn;
+            
+            // 如果我的版面上有這個數字，標記它
+            const idx = myBoard.indexOf(num);
+            if(idx !== -1) {
+                marked[idx] = true;
+                const cell = document.getElementById(`gcell-${idx}`);
+                if(cell) {
+                    cell.classList.add('marked');
+                    cell.classList.remove('selected');
+                }
+            }
+
+            updateHistoryUI();
             updateTurnUI();
-            updateGameDisplay();
-            checkBingo();
+            checkWin();
+        }
+
+        function updateHistoryUI() {
+            const container = document.getElementById('call-history');
+            container.innerHTML = calledNums.map((n, i) => 
+                `<div class="ball ${i===0?'latest':''}">${n}</div>`
+            ).join('');
         }
 
         function updateTurnUI() {
-            const isMyTurn = (myIdx === curTurnIdx);
-            document.getElementById('call-btn').classList.toggle('hidden', !isMyTurn);
-            document.getElementById('wait-msg').classList.toggle('hidden', isMyTurn);
-            document.getElementById('turn-display').innerText = isMyTurn ? "YOUR TURN!" : `${players[curTurnIdx].name}'S TURN`;
-        }
-
-        function updateGameDisplay() {
-            // 更新版面
-            marked.forEach((m, i) => {
-                if(m) document.getElementById(`cell-${i}`).classList.add('marked');
-            });
-            // 更新歷史球
-            const history = document.getElementById('call-history');
-            history.innerHTML = calledNumbers.map((num, i) => `<div class="history-ball ${i===0?'latest':''}">${num}</div>`).join('');
-        }
-
-        function checkBingo() {
-            let lines = 0;
-            const grid = [];
-            for(let i=0; i<5; i++) grid.push(marked.slice(i*5, i*5+5));
-
-            const winningCells = new Set();
-            for(let r=0; r<5; r++) if(grid[r].every(v=>v)) { lines++; for(let c=0; c<5; c++) winningCells.add(r*5+c); }
-            for(let c=0; c<5; c++) {
-                let col = [grid[0][c], grid[1][c], grid[2][c], grid[3][c], grid[4][c]];
-                if(col.every(v=>v)) { lines++; for(let r=0; r<5; r++) winningCells.add(r*5+c); }
-            }
-            if([grid[0][0], grid[1][1], grid[2][2], grid[3][3], grid[4][4]].every(v=>v)) { lines++; [0,6,12,18,24].forEach(i=>winningCells.add(i)); }
-            if([grid[0][4], grid[1][3], grid[2][2], grid[3][1], grid[4][0]].every(v=>v)) { lines++; [4,8,12,16,20].forEach(i=>winningCells.add(i)); }
-
-            winningCells.forEach(idx => document.getElementById(`cell-${idx}`).classList.add('bingo-line'));
+            const badge = document.getElementById('turn-badge');
+            const isMe = (curTurn === myIdx);
             
-            // (4) 更新連線數量提示
-            document.getElementById('line-progress').innerText = `LINES: ${lines} / ${config.lines}`;
+            if(isMe) {
+                badge.innerText = "YOUR TURN";
+                badge.className = "turn-badge active";
+            } else {
+                badge.innerText = `${players[curTurn].name}'S TURN`;
+                badge.className = "turn-badge";
+            }
+        }
+
+        function checkWin() {
+            let lines = 0;
+            // Rows & Cols
+            for(let i=0; i<5; i++) {
+                if(marked.slice(i*5, i*5+5).every(x=>x)) lines++; // Row
+                if([0,1,2,3,4].map(r => marked[r*5+i]).every(x=>x)) lines++; // Col
+            }
+            // Diagonals
+            if([0,6,12,18,24].map(i=>marked[i]).every(x=>x)) lines++;
+            if([4,8,12,16,20].map(i=>marked[i]).every(x=>x)) lines++;
+
+            // Highlight Winning Lines
+            // (為了保持代碼簡潔，這裡只做計數，若需要精確高亮線條可加回 winningCells 邏輯)
+            
+            document.getElementById('lines-badge').innerText = `LINES: ${lines}/${config.lines}`;
 
             if(lines >= config.lines) {
-                const me = players[myIdx].name;
-                if(isHost) broadcast({type:'WINNER', name: me});
-                else conns[0].send({type:'WINNER', name: me});
-                showWinner(me);
+                const msg = {type:'WINNER', name:myName};
+                if(isHost) { broadcast(msg); showVictory(myName); }
+                else conns[0].send(msg);
             }
         }
 
-        function showWinner(name) {
-            document.getElementById('winner-name').innerText = name + " WINS!";
+        function showVictory(name) {
             document.getElementById('victory-screen').classList.remove('hidden');
+            document.getElementById('winner-text').innerText = name;
+        }
+
+        function copyId() {
+            navigator.clipboard.writeText(document.getElementById('room-id-display').innerText);
+            alert("ROOM ID COPIED!");
         }
     </script>
 </body>
