@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pixel Bingo v0.3</title>
+    <title>Pixel Bingo v0.4</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -111,6 +111,41 @@
         }
 
         .helper-text { font-size: 8px; color: #666; margin-top: 5px; }
+        
+        /* Bingo 按鈕 */
+        #bingo-btn {
+            margin-top: 15px; border-color: gold; color: gold;
+            width: 100%; max-width: 400px; animation: pulse 2s infinite;
+            display: none; /* 初始隱藏，達到條件時才顯示 */
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+        }
+        
+        /* 提示訊息 */
+        .bingo-alert {
+            color: gold;
+            font-size: 9px;
+            margin-top: 5px;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* 數字輸入框調整 */
+        .config-inputs {
+            display: flex; justify-content: center; gap: 15px; margin-top: 10px;
+        }
+        .config-group {
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .config-group input {
+            width: 80px; padding: 10px; font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -118,16 +153,22 @@
     <div id="start-screen" class="screen">
         <h1 style="color:var(--primary); font-size:28px; line-height: 1.5; margin-bottom:20px;">
             PIXEL<br><span style="color:#fff">BINGO</span>
-            <span style="font-size:10px; color:#666; display:block; margin-top:5px;">v0.3</span>
+            <span style="font-size:10px; color:#666; display:block; margin-top:5px;">v0.4</span>
         </h1>
         
         <input type="text" id="user-name" placeholder="ENTER NAME" maxlength="8" style="width: 200px;">
         
         <div class="box">
             <span class="label">HOST SETTINGS</span>
-            <div style="display:flex; justify-content:center; gap:10px;">
-                <div><span class="label">MAX NUM</span><input type="number" id="cfg-range" value="25" style="width:60px;"></div>
-                <div><span class="label">LINES</span><input type="number" id="cfg-lines" value="3" style="width:40px;"></div>
+            <div class="config-inputs">
+                <div class="config-group">
+                    <span class="label">MAX NUM</span>
+                    <input type="number" id="cfg-range" value="25" min="15" max="100" step="5">
+                </div>
+                <div class="config-group">
+                    <span class="label">LINES</span>
+                    <input type="number" id="cfg-lines" value="3" min="1" max="10">
+                </div>
             </div>
         </div>
 
@@ -185,6 +226,10 @@
         </p>
 
         <div id="game-grid" class="bingo-container"></div>
+        
+        <div id="bingo-alert" class="bingo-alert" style="display:none;">BINGO READY! PRESS BUTTON</div>
+        <button class="btn" id="bingo-btn" onclick="declareBingo()">BINGO!</button>
+        
         <div id="call-history"></div>
     </div>
 
@@ -193,6 +238,7 @@
         <div style="font-size:12px; color:#888;">WINNER</div>
         <h2 id="winner-text" style="color:var(--primary); margin: 20px 0; font-size: 24px;">-</h2>
         <button class="btn" onclick="location.reload()">MAIN MENU</button>
+        <button class="btn" onclick="rematch()" style="margin-top:10px; border-color: var(--primary);">PLAY AGAIN</button>
     </div>
 
     <script>
@@ -208,7 +254,11 @@
         let marked = Array(25).fill(false);
         let calledNums = [];
         let curTurn = 0;
-        let selectedCell = -1; // 用於雙擊判斷
+        let selectedCell = -1;
+        let lastClickTime = 0;
+        let lastClickIdx = -1;
+        let winningCells = [];
+        let canDeclareBingo = false; // 是否可以宣告Bingo
 
         // --- P2P ---
         let peer = null;
@@ -224,9 +274,11 @@
             document.getElementById('start-screen').classList.add('hidden');
             
             if (mode === 'local') {
+                // 修正1: 單人模式直接進入設定
                 isHost = true;
-                players = [{id:'local', name:myName, ready:false}];
-                hostStartSetup();
+                players = [{id:'local', name:myName, ready:true}];
+                myIdx = 0;
+                startSetupPhase();
             } else {
                 document.getElementById('lobby-screen').classList.remove('hidden');
                 initPeer();
@@ -281,12 +333,19 @@
                     checkReadyStatus();
                 }
                 if(data.type === 'REQUEST_CALL') {
-                    // (3) 同步核心：Host 收到請求 -> 驗證 -> 廣播
                     processCall(data.num); 
                 }
                 if(data.type === 'WINNER') {
                     broadcast(data); // Relay winner
                     showVictory(data.name);
+                }
+                if(data.type === 'BINGO_DECLARE') {
+                    // 驗證Bingo
+                    broadcast({type:'WINNER', name:data.name});
+                    showVictory(data.name);
+                }
+                if(data.type === 'REMATCH_REQUEST') {
+                    handleRematch();
                 }
             }
             
@@ -304,7 +363,17 @@
             if(data.type === 'WINNER') showVictory(data.name);
         }
 
-        function broadcast(msg) { conns.forEach(c => c.send(msg)); }
+        function broadcast(msg) { 
+            if(mode !== 'local') {
+                conns.forEach(c => {
+                    try {
+                        c.send(msg);
+                    } catch(e) {
+                        console.log("Send failed:", e);
+                    }
+                });
+            }
+        }
 
         // --- Lobby ---
         function updateLobby() {
@@ -316,14 +385,26 @@
         }
 
         function hostStartSetup() {
-            if(isHost) { broadcast({type:'START_SETUP'}); startSetupPhase(); }
+            if(isHost) { 
+                broadcast({type:'START_SETUP'}); 
+                startSetupPhase(); 
+            }
         }
 
         // --- Setup ---
         function startSetupPhase() {
-            document.getElementById('lobby-screen').classList.add('hidden');
+            // 隱藏其他畫面
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
             document.getElementById('setup-screen').classList.remove('hidden');
+            
             renderSetupGrid();
+            
+            // 單人模式特殊處理
+            if(mode === 'local') {
+                document.getElementById('ready-btn').classList.add('hidden');
+                document.getElementById('host-start-btn').classList.remove('hidden');
+                document.getElementById('ready-status').innerText = "SOLO MODE - FILL YOUR BOARD";
+            }
         }
 
         function renderSetupGrid() {
@@ -335,14 +416,16 @@
                 let inp = document.createElement('input');
                 inp.type = "number";
                 inp.value = myBoard[i] || '';
-                // 即時驗證
-                inp.oninput = (e) => { myBoard[i] = parseInt(e.target.value); validateBoard(); };
+                inp.oninput = (e) => { 
+                    myBoard[i] = parseInt(e.target.value) || 0; 
+                    validateBoard(); 
+                };
                 div.appendChild(inp);
                 grid.appendChild(div);
             }
+            validateBoard();
         }
 
-        // (2) 輸入驗證：重複或非法數字
         function validateBoard() {
             const cells = document.getElementById('setup-grid').children;
             const counts = {};
@@ -356,10 +439,16 @@
                 const cell = cells[i];
                 cell.classList.remove('error');
                 
-                if(isNaN(val) || val < 1 || val > config.range) {
-                    if(val !== 0 && !isNaN(val)) { cell.classList.add('error'); hasError = true; errorMsg = "OUT OF RANGE"; }
+                if(val < 1 || val > config.range) {
+                    if(val !== 0) { 
+                        cell.classList.add('error'); 
+                        hasError = true; 
+                        errorMsg = "OUT OF RANGE 1-" + config.range; 
+                    }
                 } else if(counts[val] > 1) {
-                    cell.classList.add('error'); hasError = true; errorMsg = "DUPLICATE NUMBERS";
+                    cell.classList.add('error'); 
+                    hasError = true; 
+                    errorMsg = "DUPLICATE NUMBERS";
                 }
             }
 
@@ -376,6 +465,11 @@
             } else {
                 btn.disabled = false;
                 msgEl.innerText = "";
+            }
+            
+            // 單人模式直接啟用開始按鈕
+            if(mode === 'local' && isFull && !hasError) {
+                document.getElementById('host-start-btn').disabled = false;
             }
         }
 
@@ -420,14 +514,33 @@
         }
 
         function hostStartGame() {
-            broadcast({type:'START_GAME'});
-            startGamePhase();
+            if(mode === 'local') {
+                startGamePhase();
+            } else {
+                broadcast({type:'START_GAME'});
+                startGamePhase();
+            }
         }
 
         // --- Game Phase ---
         function startGamePhase() {
-            document.getElementById('setup-screen').classList.add('hidden');
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
             document.getElementById('game-screen').classList.remove('hidden');
+            
+            // 重置遊戲狀態
+            marked = Array(25).fill(false);
+            calledNums = [];
+            curTurn = 0;
+            selectedCell = -1;
+            winningCells = [];
+            canDeclareBingo = false;
+            lastClickTime = 0;
+            lastClickIdx = -1;
+            
+            // 隱藏Bingo按鈕和提示
+            document.getElementById('bingo-btn').style.display = 'none';
+            document.getElementById('bingo-alert').style.display = 'none';
+            
             renderGameGrid();
             updateTurnUI();
         }
@@ -440,28 +553,44 @@
                 div.className = 'cell game-cell';
                 div.id = `gcell-${idx}`;
                 div.innerText = num;
-                // (1) 綁定雙擊事件
+                
+                // 綁定點擊事件
                 div.onclick = () => handleCellClick(idx, num);
                 grid.appendChild(div);
             });
+            updateCellColors();
         }
 
-        // (1) 雙擊叫號邏輯
+        // 修正2: 恢復雙擊效果
         function handleCellClick(idx, num) {
+            // 如果已經達成Bingo條件，不能叫號
+            if(canDeclareBingo) return;
+            
             // 規則：必須是你的回合，且該數字未被選過
-            if(curTurn !== myIdx) return;
+            if(mode !== 'local' && curTurn !== myIdx) return;
             if(marked[idx] || calledNums.includes(num)) return;
-
-            if(selectedCell === idx) {
-                // 第二次點擊：確認叫號
-                if(isHost) processCall(num);
-                else conns[0].send({type:'REQUEST_CALL', num: num});
+            
+            const now = Date.now();
+            
+            // 檢查是否為雙擊 (500ms內點擊相同格子)
+            if(lastClickIdx === idx && now - lastClickTime < 500) {
+                // 雙擊確認叫號
+                if(isHost || mode === 'local') {
+                    processCall(num);
+                } else {
+                    conns[0].send({type:'REQUEST_CALL', num: num});
+                }
                 
-                selectedCell = -1; // 重置
+                // 重置點擊狀態
+                lastClickTime = 0;
+                lastClickIdx = -1;
+                selectedCell = -1;
                 updateSelection();
             } else {
-                // 第一次點擊：選中
+                // 第一次點擊：選中候選格
                 selectedCell = idx;
+                lastClickTime = now;
+                lastClickIdx = idx;
                 updateSelection();
             }
         }
@@ -469,21 +598,50 @@
         function updateSelection() {
             for(let i=0; i<25; i++) {
                 const cell = document.getElementById(`gcell-${i}`);
-                if(i === selectedCell) cell.classList.add('selected');
-                else cell.classList.remove('selected');
+                if(cell) {
+                    // 選中狀態
+                    cell.classList.toggle('selected', i === selectedCell);
+                    
+                    // 連線狀態和標記狀態
+                    if(winningCells.includes(i)) {
+                        cell.classList.add('bingo-line');
+                    } else if(marked[i]) {
+                        cell.classList.add('marked');
+                    } else {
+                        cell.classList.remove('marked', 'bingo-line');
+                    }
+                }
             }
         }
 
-        // (3) 核心同步：只有 Host 決定下一回合與廣播
+        function updateCellColors() {
+            for(let i=0; i<25; i++) {
+                const cell = document.getElementById(`gcell-${i}`);
+                if(cell) {
+                    // 清除所有顏色類別
+                    cell.classList.remove('marked', 'bingo-line', 'selected');
+                    
+                    // 應用正確的顏色
+                    if(winningCells.includes(i)) {
+                        cell.classList.add('bingo-line');
+                    } else if(marked[i]) {
+                        cell.classList.add('marked');
+                    }
+                }
+            }
+        }
+
         function processCall(num) {
-            if(calledNums.includes(num)) return; // 防重複
+            if(calledNums.includes(num)) return;
             
-            const nextTurn = (curTurn + 1) % players.length;
+            const nextTurn = (mode === 'local') ? 0 : (curTurn + 1) % players.length;
             
             // Host 更新自己
             applyCall(num, nextTurn);
-            // Host 廣播給所有人
-            broadcast({type:'CALL_UPDATE', num: num, nextTurn: nextTurn});
+            // 如果不是單人模式，廣播給其他人
+            if(mode !== 'local') {
+                broadcast({type:'CALL_UPDATE', num: num, nextTurn: nextTurn});
+            }
         }
 
         function applyCall(num, nextTurn) {
@@ -494,16 +652,11 @@
             const idx = myBoard.indexOf(num);
             if(idx !== -1) {
                 marked[idx] = true;
-                const cell = document.getElementById(`gcell-${idx}`);
-                if(cell) {
-                    cell.classList.add('marked');
-                    cell.classList.remove('selected');
-                }
             }
 
             updateHistoryUI();
             updateTurnUI();
-            checkWin();
+            checkBingoCondition(); // 修正3: 檢查是否達到Bingo條件，但不自動宣告
         }
 
         function updateHistoryUI() {
@@ -514,6 +667,12 @@
         }
 
         function updateTurnUI() {
+            if(mode === 'local') {
+                document.getElementById('turn-badge').innerText = "SOLO MODE";
+                document.getElementById('turn-badge').className = "turn-badge";
+                return;
+            }
+            
             const badge = document.getElementById('turn-badge');
             const isMe = (curTurn === myIdx);
             
@@ -521,42 +680,149 @@
                 badge.innerText = "YOUR TURN";
                 badge.className = "turn-badge active";
             } else {
-                badge.innerText = `${players[curTurn].name}'S TURN`;
+                badge.innerText = `${players[curTurn]?.name || 'Unknown'}'S TURN`;
                 badge.className = "turn-badge";
             }
         }
 
-        function checkWin() {
+        // 修正3: 檢查Bingo條件但不自動宣告
+        function checkBingoCondition() {
+            winningCells = [];
             let lines = 0;
-            // Rows & Cols
-            for(let i=0; i<5; i++) {
-                if(marked.slice(i*5, i*5+5).every(x=>x)) lines++; // Row
-                if([0,1,2,3,4].map(r => marked[r*5+i]).every(x=>x)) lines++; // Col
-            }
-            // Diagonals
-            if([0,6,12,18,24].map(i=>marked[i]).every(x=>x)) lines++;
-            if([4,8,12,16,20].map(i=>marked[i]).every(x=>x)) lines++;
-
-            // Highlight Winning Lines
-            // (為了保持代碼簡潔，這裡只做計數，若需要精確高亮線條可加回 winningCells 邏輯)
             
-            document.getElementById('lines-badge').innerText = `LINES: ${lines}/${config.lines}`;
+            // 檢查橫行
+            for(let i=0; i<5; i++) {
+                const rowCells = [i*5, i*5+1, i*5+2, i*5+3, i*5+4];
+                if(rowCells.every(idx => marked[idx])) {
+                    lines++;
+                    winningCells.push(...rowCells);
+                }
+            }
+            // 檢查直列
+            for(let i=0; i<5; i++) {
+                const colCells = [i, i+5, i+10, i+15, i+20];
+                if(colCells.every(idx => marked[idx])) {
+                    lines++;
+                    winningCells.push(...colCells);
+                }
+            }
+            // 檢查對角線
+            const diag1 = [0, 6, 12, 18, 24];
+            if(diag1.every(idx => marked[idx])) {
+                lines++;
+                winningCells.push(...diag1);
+            }
+            const diag2 = [4, 8, 12, 16, 20];
+            if(diag2.every(idx => marked[idx])) {
+                lines++;
+                winningCells.push(...diag2);
+            }
 
+            document.getElementById('lines-badge').innerText = `LINES: ${lines}/${config.lines}`;
+            updateCellColors();
+            
+            // 達到條件但不自動宣告，只顯示提示和按鈕
             if(lines >= config.lines) {
-                const msg = {type:'WINNER', name:myName};
-                if(isHost) { broadcast(msg); showVictory(myName); }
-                else conns[0].send(msg);
+                canDeclareBingo = true;
+                document.getElementById('bingo-btn').style.display = 'block';
+                document.getElementById('bingo-alert').style.display = 'block';
+                return true;
+            } else {
+                canDeclareBingo = false;
+                document.getElementById('bingo-btn').style.display = 'none';
+                document.getElementById('bingo-alert').style.display = 'none';
+                return false;
+            }
+        }
+
+        function declareBingo() {
+            if(!canDeclareBingo) {
+                alert("You don't have enough lines for BINGO yet!");
+                return;
+            }
+            
+            const msg = {type:'WINNER', name:myName};
+            if(mode === 'local') {
+                showVictory(myName);
+            } else if(isHost) { 
+                broadcast(msg); 
+                showVictory(myName); 
+            } else {
+                conns[0].send({type:'BINGO_DECLARE', name:myName});
             }
         }
 
         function showVictory(name) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
             document.getElementById('victory-screen').classList.remove('hidden');
             document.getElementById('winner-text').innerText = name;
         }
 
+        // 修正4: 修正再玩一次的按鈕
+        function rematch() {
+            if(mode === 'local') {
+                // 單人模式：直接重新開始設置
+                myBoard = Array(25).fill(0);
+                marked = Array(25).fill(false);
+                calledNums = [];
+                curTurn = 0;
+                winningCells = [];
+                canDeclareBingo = false;
+                selectedCell = -1;
+                
+                document.getElementById('victory-screen').classList.add('hidden');
+                startSetupPhase();
+            } else {
+                // 多人模式：發送重賽請求
+                if(isHost) {
+                    // 房主發起重賽
+                    handleRematch();
+                    broadcast({type:'REMATCH_REQUEST'});
+                } else {
+                    // 非房主發送請求
+                    conns[0].send({type:'REMATCH_REQUEST'});
+                    alert("Rematch request sent to host");
+                }
+            }
+        }
+
+        function handleRematch() {
+            // 重置所有玩家的ready狀態
+            players.forEach(p => p.ready = false);
+            
+            // 重置遊戲狀態
+            myBoard = Array(25).fill(0);
+            marked = Array(25).fill(false);
+            calledNums = [];
+            curTurn = 0;
+            winningCells = [];
+            canDeclareBingo = false;
+            selectedCell = -1;
+            
+            // 更新界面
+            if(mode !== 'local') {
+                document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+                document.getElementById('lobby-screen').classList.remove('hidden');
+                updateLobby();
+            }
+        }
+
         function copyId() {
-            navigator.clipboard.writeText(document.getElementById('room-id-display').innerText);
-            alert("ROOM ID COPIED!");
+            const idText = document.getElementById('room-id-display').innerText;
+            if(navigator.clipboard) {
+                navigator.clipboard.writeText(idText).then(() => {
+                    alert("ROOM ID COPIED!");
+                });
+            } else {
+                // 備用方案
+                const textArea = document.createElement('textarea');
+                textArea.value = idText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert("ROOM ID COPIED!");
+            }
         }
     </script>
 </body>
