@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pixel Bingo v0.3</title>
+    <title>Pixel Bingo v0.2</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
             --bg: #0a0a0a; --primary: #00ff41; --secondary: #ff00ff;
-            --accent: #ffff00; --text: #fff; --border: #333; --highlight: #00ffff; --error: #ff4444;
+            --accent: #ffff00; --text: #fff; --border: #333; --highlight: #00ffff;
         }
         body {
             background: var(--bg); color: var(--text);
@@ -28,7 +28,7 @@
             padding: 12px 20px; margin: 8px; cursor: pointer; font-family: 'Press Start 2P';
             image-rendering: pixelated; touch-action: manipulation;
         }
-        .btn:hover:not(:disabled) { background: var(--secondary); }
+        .btn:hover:not(:disabled) { background: var(--secondary); color: #fff; }
         .btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
         input {
@@ -44,7 +44,7 @@
         .cell {
             aspect-ratio: 1/1; background: #151515; border: 3px solid var(--border);
             display: flex; align-items: center; justify-content: center;
-            font-size: 16px; position: relative; transition: all 0.2s; cursor: pointer;
+            font-size: 16px; position: relative; transition: all 0.2s;
         }
         .cell.marked { 
             background: var(--primary); color: #000; border-color: #fff;
@@ -54,23 +54,11 @@
             background: var(--secondary); color: #fff;
             animation: neonPulse 1s infinite alternate;
         }
-        /* 輪到自己的提示動畫 */
-        .cell.my-turn-hint:not(.marked) {
-            border-color: var(--highlight);
-            animation: hintPulse 1.5s infinite;
+        .cell input {
+            width: 80%; border: none; background: transparent; color: inherit;
+            font-size: inherit; font-family: inherit; outline: none; padding: 0; text-align: center;
         }
-        /* 雙擊中的暫時狀態 */
-        .cell.confirming { background: #444; border-color: var(--accent); }
 
-        /* 重複數字警告 */
-        .cell.duplicate-error { border-color: var(--error); animation: shake 0.3s infinite; }
-        .cell.duplicate-error input { color: var(--error); }
-
-        @keyframes hintPulse {
-            0% { box-shadow: inset 0 0 0px var(--highlight); }
-            50% { box-shadow: inset 0 0 15px var(--highlight); }
-            100% { box-shadow: inset 0 0 0px var(--highlight); }
-        }
         @keyframes markPop {
             0% { transform: scale(0.5); }
             70% { transform: scale(1.1); }
@@ -79,11 +67,6 @@
         @keyframes neonPulse {
             from { box-shadow: 0 0 5px var(--secondary); }
             to { box-shadow: 0 0 20px var(--secondary), 0 0 30px var(--highlight); }
-        }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-2px); }
-            75% { transform: translateX(2px); }
         }
 
         #call-history {
@@ -98,18 +81,25 @@
         .history-ball.latest { background: var(--accent); color: #000; border-color: #fff; transform: scale(1.1); }
 
         .status-tag { font-size: 8px; color: var(--primary); margin-left: 5px; }
+
+        @media (max-width: 600px) {
+            .cell { font-size: 12px; }
+            .bingo-container { gap: 5px; }
+        }
     </style>
 </head>
 <body>
 
     <div id="start-screen" class="screen">
-        <h1 style="color:var(--primary); font-size: 24px; margin-bottom: 20px;">PIXEL BINGO <span style="font-size:10px">v0.3</span></h1>
+        <h1 style="color:var(--primary); font-size: 24px; margin-bottom: 20px;">PIXEL BINGO <span style="font-size:10px">v0.2</span></h1>
         <input type="text" id="user-name" placeholder="YOUR NAME" maxlength="8">
+        
         <div style="background: #111; padding: 15px; border: 2px solid #444; margin: 10px;">
             <p style="font-size: 8px;">HOST SETTINGS</p>
             <label style="font-size: 8px;">RANGE: 1-</label><input type="number" id="cfg-range" value="25" style="width:50px; font-size:8px;">
             <label style="font-size: 8px;">LINES:</label><input type="number" id="cfg-lines" value="3" style="width:40px; font-size:8px;">
         </div>
+
         <div>
             <button class="btn" onclick="initMode('local')">SINGLE PLAYER</button>
             <button class="btn" onclick="initMode('online')">ONLINE P2P</button>
@@ -137,7 +127,7 @@
             <button class="btn" onclick="randomizeBoard()">RANDOM</button>
             <button class="btn" id="ready-btn" onclick="toggleReady()">READY</button>
         </div>
-        <p id="setup-msg" style="color: var(--error); font-size: 8px; height: 12px;"></p>
+        <p id="setup-msg" style="color: red; font-size: 8px;"></p>
         <div id="ready-count" style="font-size: 8px; color: var(--primary);">READY: 0/0</div>
         <button class="btn hidden" id="host-start-game-btn" onclick="hostStartGame()" style="border-color: var(--accent);">ALL READY! START GAME</button>
     </div>
@@ -147,10 +137,13 @@
             <div id="turn-display" style="font-size: 8px; color: var(--highlight);">WAITING...</div>
             <div id="line-progress" style="font-size: 8px; color: var(--accent);">LINES: 0 / 3</div>
         </div>
+
         <div id="main-grid" class="bingo-container"></div>
         <div id="call-history"></div>
-        <div id="action-hint" style="margin-top: 15px; font-size: 8px; color: #777;">
-            -
+
+        <div id="action-area" style="margin-top: 20px;">
+            <button class="btn hidden" id="call-btn" onclick="playerCallNumber()" style="border-color: var(--primary);">IT'S YOUR TURN: CALL!</button>
+            <p id="wait-msg" style="font-size: 8px; color: #555;">WAITING FOR PLAYER...</p>
         </div>
     </div>
 
@@ -170,23 +163,24 @@
         let calledNumbers = [];
         let curTurnIdx = 0;
         let isReady = false;
-        let lastClickIdx = -1; // 用於追蹤雙擊
 
+        // (1) 複製 ID 功能
         function copyId() {
             const idText = document.getElementById('room-id-display').innerText;
             if(!idText) return;
             navigator.clipboard.writeText(idText).then(() => alert("ID COPIED!"));
         }
 
-        // --- 初始化與連線邏輯 (與 v0.2 相同) ---
         function initMode(m) {
             mode = m;
             const name = document.getElementById('user-name').value || "PLAYER";
             config.range = parseInt(document.getElementById('cfg-range').value) || 25;
             config.lines = parseInt(document.getElementById('cfg-lines').value) || 3;
             document.getElementById('start-screen').classList.add('hidden');
+            
             if(mode === 'local') {
-                isHost = true; myIdx = 0; players = [{name: name, id: 'local', ready: false}];
+                isHost = true; myIdx = 0;
+                players = [{name: name, id: 'local', ready: false}];
                 hostStartSetup();
             } else {
                 document.getElementById('lobby-screen').classList.remove('hidden');
@@ -227,7 +221,8 @@
             if(data.type === 'SYNC_PLAYERS') {
                 players = data.players;
                 myIdx = players.findIndex(p => p.id === (peer ? peer.id : 'local'));
-                updatePlayerList(); updateReadyUI();
+                updatePlayerList();
+                updateReadyUI();
             }
             if(data.type === 'SYNC_CFG') { config = data.config; }
             if(data.type === 'START_SETUP') {
@@ -238,7 +233,8 @@
             if(data.type === 'READY_UP' && isHost) {
                 const p = players.find(x => x.id === conn.peer);
                 if(p) p.ready = data.state;
-                broadcast({type:'SYNC_PLAYERS', players}); updateReadyUI();
+                broadcast({type:'SYNC_PLAYERS', players});
+                updateReadyUI();
             }
             if(data.type === 'START_GAME') runStartGame();
             if(data.type === 'CALL') receiveNumber(data.num, data.nextTurn);
@@ -253,6 +249,7 @@
             if(isHost) document.getElementById('start-setup-btn').disabled = (players.length < 1 && mode !== 'local');
         }
 
+        // (2) 房主流程控制
         function hostStartSetup() {
             if(isHost) {
                 broadcast({type:'START_SETUP'});
@@ -262,50 +259,18 @@
             }
         }
 
-        // --- (1) 配置階段：重複提示 ---
         function renderSetupGrid() {
             const container = document.getElementById('setup-grid');
             container.innerHTML = '';
             for(let i=0; i<25; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
-                cell.id = `setup-cell-${i}`;
-                cell.innerHTML = `<input type="number" value="${myBoard[i]||''}" oninput="updateBoard(${i}, this.value)">`;
+                cell.innerHTML = `<input type="number" value="${myBoard[i]||''}" onchange="updateBoard(${i}, this.value)">`;
                 container.appendChild(cell);
             }
-            validateBoard();
         }
 
-        function updateBoard(i, val) {
-            myBoard[i] = parseInt(val);
-            validateBoard();
-        }
-
-        function validateBoard() {
-            const btn = document.getElementById('ready-btn');
-            const msg = document.getElementById('setup-msg');
-            let hasDuplicate = false;
-            let hasInvalid = false;
-
-            // 檢查重複並標色
-            const counts = {};
-            myBoard.forEach(n => { if(n > 0) counts[n] = (counts[n] || 0) + 1; });
-
-            for(let i=0; i<25; i++) {
-                const cell = document.getElementById(`setup-cell-${i}`);
-                const val = myBoard[i];
-                const isDupe = val > 0 && counts[val] > 1;
-                const isInvalid = val <= 0 || val > config.range || isNaN(val);
-                
-                if(isDupe) { cell.classList.add('duplicate-error'); hasDuplicate = true; }
-                else { cell.classList.remove('duplicate-error'); }
-                
-                if(isInvalid) hasInvalid = true;
-            }
-
-            btn.disabled = hasDuplicate || hasInvalid;
-            msg.innerText = hasDuplicate ? "!!! DUPLICATE NUMBERS FOUND !!!" : (hasInvalid ? "NUMBERS OUT OF RANGE!" : "");
-        }
+        function updateBoard(i, val) { myBoard[i] = parseInt(val); validateBoard(); }
 
         function randomizeBoard() {
             let nums = [];
@@ -313,12 +278,22 @@
                 let r = Math.floor(Math.random() * config.range) + 1;
                 if(!nums.includes(r)) nums.push(r);
             }
-            myBoard = nums; renderSetupGrid();
+            myBoard = nums; renderSetupGrid(); validateBoard();
         }
 
+        function validateBoard() {
+            const btn = document.getElementById('ready-btn');
+            const hasDuplicate = new Set(myBoard.filter(n=>n!==0)).size !== 25;
+            const hasInvalid = myBoard.some(n => n <= 0 || n > config.range || isNaN(n));
+            btn.disabled = hasDuplicate || hasInvalid;
+            document.getElementById('setup-msg').innerText = hasDuplicate ? "DUPLICATE!" : (hasInvalid ? "OUT OF RANGE!" : "");
+        }
+
+        // (3) 準備狀態連動
         function toggleReady() {
             isReady = !isReady;
             document.getElementById('ready-btn').innerText = isReady ? "CANCEL" : "READY";
+            document.getElementById('ready-btn').style.borderColor = isReady ? "var(--primary)" : "#fff";
             if(isHost) { players[0].ready = isReady; updateReadyUI(); broadcast({type:'SYNC_PLAYERS', players}); }
             else { conns[0].send({type:'READY_UP', state: isReady}); }
         }
@@ -326,73 +301,54 @@
         function updateReadyUI() {
             const readyCount = players.filter(p => p.ready).length;
             document.getElementById('ready-count').innerText = `READY: ${readyCount} / ${players.length}`;
-            if(isHost) document.getElementById('host-start-game-btn').classList.toggle('hidden', readyCount !== players.length);
+            if(isHost) {
+                const allReady = readyCount === players.length;
+                document.getElementById('host-start-game-btn').classList.toggle('hidden', !allReady);
+            }
         }
 
-        function hostStartGame() { if(isHost) { broadcast({type:'START_GAME'}); runStartGame(); } }
+        function hostStartGame() {
+            if(isHost) { broadcast({type:'START_GAME'}); runStartGame(); }
+        }
 
         function runStartGame() {
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
-            renderGameGrid(); updateTurnUI();
+            renderGameGrid();
+            updateTurnUI();
         }
 
-        // --- (2) 遊戲階段：雙擊叫號 ---
         function renderGameGrid() {
             const container = document.getElementById('main-grid'); container.innerHTML = '';
             myBoard.forEach((num, i) => {
                 const cell = document.createElement('div');
                 cell.className = 'cell'; cell.id = `cell-${i}`; cell.innerText = num;
-                cell.onclick = () => handleCellClick(i);
                 container.appendChild(cell);
             });
         }
 
-        function handleCellClick(i) {
-            // 只有輪到自己且該號碼沒被叫過才能操作
-            if (myIdx !== curTurnIdx) return;
-            const num = myBoard[i];
-            if (calledNumbers.includes(num)) return;
-
-            if (lastClickIdx === i) {
-                // 第二次點擊：正式叫號
-                performCall(num);
-                lastClickIdx = -1;
-            } else {
-                // 第一次點擊：進入確認狀態
-                if (lastClickIdx !== -1) {
-                    document.getElementById(`cell-${lastClickIdx}`).classList.remove('confirming');
-                }
-                lastClickIdx = i;
-                document.getElementById(`cell-${i}`).classList.add('confirming');
-                // 3秒後自動取消確認狀態（防止卡死）
-                setTimeout(() => {
-                    if(lastClickIdx === i) {
-                        document.getElementById(`cell-${i}`).classList.remove('confirming');
-                        lastClickIdx = -1;
-                    }
-                }, 3000);
-            }
-        }
-
-        function performCall(num) {
+        // (5) 輪流叫號與自動選中
+        function playerCallNumber() {
+            if(calledNumbers.length >= config.range) return;
+            let n;
+            do { n = Math.floor(Math.random() * config.range) + 1; } while(calledNumbers.includes(n));
+            
             const nextTurn = (curTurnIdx + 1) % players.length;
             if(isHost) {
-                receiveNumber(num, nextTurn);
-                broadcast({type:'CALL', num: num, nextTurn: nextTurn});
+                receiveNumber(n, nextTurn);
+                broadcast({type:'CALL', num: n, nextTurn: nextTurn});
             } else {
-                conns[0].send({type:'CALL', num: num, nextTurn: nextTurn});
+                conns[0].send({type:'CALL', num: n, nextTurn: nextTurn});
             }
         }
 
         function receiveNumber(n, nextTurn) {
             calledNumbers.unshift(n);
             curTurnIdx = nextTurn;
-            lastClickIdx = -1; // 重置雙擊追蹤
             
-            // 自動標記
+            // 自動選中邏輯
             const idx = myBoard.indexOf(n);
-            if(idx !== -1) marked[idx] = true;
+            if(idx !== -1) { marked[idx] = true; }
 
             updateTurnUI();
             updateGameDisplay();
@@ -401,24 +357,17 @@
 
         function updateTurnUI() {
             const isMyTurn = (myIdx === curTurnIdx);
+            document.getElementById('call-btn').classList.toggle('hidden', !isMyTurn);
+            document.getElementById('wait-msg').classList.toggle('hidden', isMyTurn);
             document.getElementById('turn-display').innerText = isMyTurn ? "YOUR TURN!" : `${players[curTurnIdx].name}'S TURN`;
-            document.getElementById('action-hint').innerText = isMyTurn ? "DOUBLE CLICK A CELL TO CALL IT!" : "WAITING FOR OTHERS...";
-            
-            // 更新格子提示動畫
-            for(let i=0; i<25; i++) {
-                const cell = document.getElementById(`cell-${i}`);
-                if (cell) {
-                    cell.classList.remove('confirming');
-                    if (isMyTurn && !calledNumbers.includes(myBoard[i])) cell.classList.add('my-turn-hint');
-                    else cell.classList.remove('my-turn-hint');
-                }
-            }
         }
 
         function updateGameDisplay() {
+            // 更新版面
             marked.forEach((m, i) => {
                 if(m) document.getElementById(`cell-${i}`).classList.add('marked');
             });
+            // 更新歷史球
             const history = document.getElementById('call-history');
             history.innerHTML = calledNumbers.map((num, i) => `<div class="history-ball ${i===0?'latest':''}">${num}</div>`).join('');
         }
@@ -438,6 +387,8 @@
             if([grid[0][4], grid[1][3], grid[2][2], grid[3][1], grid[4][0]].every(v=>v)) { lines++; [4,8,12,16,20].forEach(i=>winningCells.add(i)); }
 
             winningCells.forEach(idx => document.getElementById(`cell-${idx}`).classList.add('bingo-line'));
+            
+            // (4) 更新連線數量提示
             document.getElementById('line-progress').innerText = `LINES: ${lines} / ${config.lines}`;
 
             if(lines >= config.lines) {
